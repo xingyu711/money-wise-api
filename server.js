@@ -93,12 +93,23 @@ app.post('/transaction', (req, res) => {
     .catch(err => res.status(400).json('cannot add transaction'))
 })
 
-app.get('/transaction', (req, res) => {
-  db.select('*').from('transactions')
+app.get('/transactions', (req, res) => {
+  const {value} = req.query;
+  if (!value) {
+    db('transactions').select('*')
     .then(data => {
       res.json(data)
     })
     .catch(err => res.status(400).json('cannot get data'))
+  } else {
+    db('transactions')
+    .where('note', 'ilike', `%${value}%`)
+    .orWhere('category', 'ilike', `%${value}%`)
+    .then(data => {
+      res.json(data)
+    })
+    .catch(err => res.status(400).json('cannot search transactions'))
+  }
 })
 
 app.delete('/transaction', (req, res) => {
