@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const knex = require('knex');
 const cors = require('cors');
 const moment = require('moment');
+const { v4: uuidv4 } = require('uuid');
+const e = require('express');
 
 const db = knex({
   client: 'pg',
@@ -21,18 +23,39 @@ app.use(cors());
 // main page
 app.get('/', (req, res) => {res.json('this is the main page')})
 
+// validate user token
+app.get('/validate_user', (req, res) => {
+  const {token} = req.query;
+  db('usersessions').select('*').where('token', '=', token)
+    .then(data => {
+      if (data[0]) {
+        res.json(1)
+      } else {
+        res.status(401).json('validation failed')
+      }
+    })
+    .catch(err => res.status(400).json('cannot validate info'))
+});
+
 // signin page
 app.post('/signin', (req, res) => {
   const {email, password} = req.body;
-  db.select('email', 'hash').from('login')
+  const token = uuidv4();
+
+  db.select('user_id', 'hash').from('login')
     .where('email', '=', email)
     .then(data => {
       const isValid = bcrypt.compareSync(password, data[0].hash);
       if (isValid) {
-        return db.select('*').from('users')
-          .where('email', '=', email)
-          .then(user => {
-            res.json(user[0])
+        db('usersessions').insert({
+          user_id: data[0].user_id,
+          token: token
+        }).returning('user_id')
+          .then(data => {
+            if (data[0]) {
+              const response = {user_id: data[0], token: token}
+              res.json(response);
+            }
           })
           .catch(err => res.status(400).json('unable to get user'))
       } else {
@@ -279,6 +302,7 @@ app.get('/transactions/:user_id', (req, res) => {
 // add transaction
 app.post('/transaction', (req, res) => {
   const {user_id, basic_type, category, amount, currency, created, note} = req.body;
+  console.log(created);
   db('transactions')
     .returning('transaction_id')
     .insert({
