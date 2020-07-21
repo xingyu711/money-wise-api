@@ -278,6 +278,64 @@ app.get('/yearly_expense/:user_id',  (req, res) => {
     .catch(err => res.status(400).json('cannot get data'))
 })
 
+// GENERATE REPORTS
+// get monthly trend
+app.get('/monthly_trend', async (req, res) => {
+  const {user_id, start} = req.query;
+  const end = moment(req.query.end).endOf('month').toDate();
+
+  const incomeData = await db('transactions')
+  .select(db.raw(`date_trunc('month', created) as month`))
+  .sum('amount as monthly_income')
+  .where('basic_type', '=', 'income')
+  .where('user_id', '=', user_id)
+  .whereBetween('created', [start, end])
+  .groupBy('month')
+  .orderBy('month');
+  
+  const expenseData = await db('transactions')
+  .select(db.raw(`date_trunc('month', created) as month`))
+  .sum('amount as monthly_expense')
+  .where('basic_type', '=', 'expense')
+  .where('user_id', '=', user_id)
+  .whereBetween('created', [start, end])
+  .groupBy('month')
+  .orderBy('month');
+
+  const months = [];
+  let currMonth = moment(start).startOf('month');
+  while (true) {
+    if (!moment(currMonth).isBefore(moment(end))) {
+      break;
+    }
+    months.push(currMonth.toDate());
+    currMonth = currMonth.add(1, 'month');
+  }
+
+  let incomeIndex = 0;
+  let expenseIndex = 0;
+
+  const result = months.reduce((a, c) => {
+    const data = {month: moment(c).format('YYYY-MM')};
+    if (incomeData[incomeIndex] && c.toString() === incomeData[incomeIndex].month.toString()) {
+      data.monthly_income = incomeData[incomeIndex].monthly_income;
+      incomeIndex++;
+    } else {
+      data.monthly_income = 0;
+    }
+    if (expenseData[expenseIndex] && c.toString() === expenseData[expenseIndex].month.toString()) {
+      data.monthly_expense = expenseData[expenseIndex].monthly_expense;
+      expenseIndex++;
+    } else {
+      data.monthly_expense = 0;
+    }
+    a.push(data);
+    return a;
+  }, []);
+  
+  res.json(result);
+})
+
 // load transactions
 app.get('/transactions/:user_id', (req, res) => {
   const {user_id} = req.params;
